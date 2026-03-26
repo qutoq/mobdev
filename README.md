@@ -36,4 +36,4 @@ cd java-application-development
 
 `git branch`
 
-### lab1
+### lab2
