@@ -32,31 +32,43 @@ class Calculator {
     }
 
     fun onOperationClick(op: String) {
-        firstNumber = display.toDoubleOrNull() ?: 0.0
+        if (operation.isNotEmpty() && !isNewNumber) {
+            secondNumber = display.toDoubleOrNull() ?: 0.0
+            val result = calculate(firstNumber, secondNumber, operation)
+            display = formatResult(result)
+            firstNumber = result
+        } else {
+            firstNumber = display.toDoubleOrNull() ?: 0.0
+        }
+
         operation = op
         isNewNumber = true
     }
 
     fun onEqualsClick(): String {
         secondNumber = display.toDoubleOrNull() ?: 0.0
-
-        val result = when (operation) {
-            "+" -> firstNumber + secondNumber
-            "-" -> firstNumber - secondNumber
-            "×" -> firstNumber * secondNumber
-            "÷" -> if (secondNumber != 0.0) firstNumber / secondNumber else 0.0
-            else -> firstNumber
-        }
-
-        display = if (result == result.toLong().toDouble()) {
-            result.toLong().toString()
-        } else {
-            result.toString()
-        }
-
+        val result = calculate(firstNumber, secondNumber, operation)
+        display = formatResult(result)
         isNewNumber = true
         operation = ""
         return display
+    }
+
+    private fun calculate(first: Double, second: Double, op: String): Double {
+        return when (op) {
+            "+" -> first + second
+            "-" -> first - second
+            "×" -> first * second
+            "÷" -> if (second != 0.0) first / second else 0.0
+            else -> first
+        }
+    }
+
+    private fun formatResult(result: Double): String {
+        return when {
+            result == result.toLong().toDouble() -> result.toLong().toString()
+            else -> String.format("%.2f", result)
+        }
     }
 
     fun onClear() {
@@ -68,6 +80,14 @@ class Calculator {
     }
 
     fun getDisplay(): String = display
+
+    fun getSecondaryDisplay(): String {
+        return if (operation.isNotEmpty()) {
+            String.format("%.0f %s", firstNumber, operation)
+        } else {
+            ""
+        }
+    }
 
     fun save(bundle: Bundle) {
         bundle.putString("display", display)

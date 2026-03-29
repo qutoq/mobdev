@@ -7,6 +7,7 @@ import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
     private lateinit var display: TextView
+    private lateinit var displaySecondary: TextView
     private val calculator = Calculator()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -14,6 +15,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         display = findViewById(R.id.display)
+        displaySecondary = findViewById(R.id.display_secondary)
 
         if (savedInstanceState != null) {
             calculator.restore(savedInstanceState)
@@ -24,7 +26,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupButtons() {
-        // Цифры
         mapOf(
             R.id.btn_0 to "0",
             R.id.btn_1 to "1",
@@ -56,6 +57,7 @@ class MainActivity : AppCompatActivity() {
         ).forEach { (id, op) ->
             findViewById<Button>(id).setOnClickListener {
                 calculator.onOperationClick(op)
+                updateDisplay()
             }
         }
 
@@ -72,6 +74,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateDisplay() {
         display.text = calculator.getDisplay()
+        displaySecondary.text = calculator.getSecondaryDisplay()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
