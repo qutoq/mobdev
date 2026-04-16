@@ -1,3 +1,9 @@
 <resources>
-    <string name="app_name">mobdev</string>
+    <string name="app_name">Contacts lab2</string>
+    <string name="permission_denied">Разрешение на доступ к контактам не получено</string>
+    <string name="request_permission">Дать разрешение</string>
+    <string name="contact_details">Детали контакта</string>
+    <string name="phone_label">Тел: %1$s</string>
+    <string name="email_label">Email: %1$s</string>
+    <string name="no_data">Нет данных</string>
 </resources>
