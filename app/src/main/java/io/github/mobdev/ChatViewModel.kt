@@ -23,15 +23,33 @@ class ChatViewModel(private val api: ChatApi, private val session: SessionManage
     }
 
     fun login(user: String, pass: String) {
+        if (user.isEmpty() || pass.isEmpty()) {
+            errorMessage = "Заполните все поля"
+            return
+        }
+
         viewModelScope.launch {
             loginState = "loading"
+            errorMessage = ""
             try {
-                val res = withContext(Dispatchers.IO) { api.login(LoginRequest(user, pass)) }
-                if (res.isSuccessful) {
-                    session.saveSession(user, res.body() ?: "")
+                val response = withContext(Dispatchers.IO) { api.login(LoginRequest(user, pass)) }
+
+                if (response.isSuccessful) {
+                    val token = response.body() ?: ""
+                    session.saveSession(user, token)
                     loginState = "success"
-                } else { errorMessage = "Ошибка: ${res.code()}"; loginState = "error" }
-            } catch (e: Exception) { errorMessage = "Сеть: ${e.message}"; loginState = "error" }
+                } else {
+                    if (response.code() == 401) {
+                        errorMessage = "Неверный логин или пароль"
+                    } else {
+                        errorMessage = "Ошибка сервера: ${response.code()}"
+                    }
+                    loginState = "error"
+                }
+            } catch (e: Exception) {
+                errorMessage = "Проверьте соединение с интернетом"
+                loginState = "error"
+            }
         }
     }
 
