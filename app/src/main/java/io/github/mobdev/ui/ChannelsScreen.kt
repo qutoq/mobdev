@@ -5,15 +5,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChannelsScreen(vm: ChatViewModel, onChannelClick: (String) -> Unit) {
-    // Загружаем список при открытии экрана
+    val channels by vm.channels.collectAsState(initial = emptyList())
+
     LaunchedEffect(Unit) {
         vm.loadChannels()
     }
@@ -30,13 +29,13 @@ fun ChannelsScreen(vm: ChatViewModel, onChannelClick: (String) -> Unit) {
             )
         }
     ) { padding ->
-        if (vm.isChannelsLoading) {
+        if (vm.isChannelsLoading && channels.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
                 CircularProgressIndicator()
             }
         } else {
             LazyColumn(modifier = Modifier.padding(padding)) {
-                items(vm.channels) { channel ->
+                items(channels) { channel ->
                     ListItem(
                         headlineContent = { Text(channel) },
                         modifier = Modifier.clickable { onChannelClick(channel) }

@@ -5,21 +5,35 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.mobdev.api.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class ChatViewModel(private val api: ChatApi, private val session: SessionManager) : ViewModel() {
+class ChatViewModel(private val repo: ChatRepository, private val session: SessionManager) : ViewModel() {
     var loginState by mutableStateOf<String?>(null)
     var errorMessage by mutableStateOf("")
-    var channels by mutableStateOf<List<String>>(emptyList())
-    var messages by mutableStateOf<List<Message>>(emptyList())
+
+    val channels: Flow<List<String>> = repo.channels
+
+    var selectedChannel by mutableStateOf("")
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val messages: Flow<List<Message>> = snapshotFlow { selectedChannel }
+        .flatMapLatest { channelId ->
+            if (channelId.isEmpty()) flowOf(emptyList())
+            else repo.getMessages(channelId)
+        }
+
     var isChannelsLoading by mutableStateOf(false)
     var isMessagesLoading by mutableStateOf(false)
     var currentUser by mutableStateOf("")
-    var selectedChannel by mutableStateOf("")
 
     init {
-        viewModelScope.launch { session.username.collect { currentUser = it } }
+        viewModelScope.launch {
+            session.username.collect { currentUser = it }
+        }
+        viewModelScope.launch { repo.retryPendingMessages() }
     }
 
     fun login(user: String, pass: String) {
@@ -27,27 +41,22 @@ class ChatViewModel(private val api: ChatApi, private val session: SessionManage
             errorMessage = "Заполните все поля"
             return
         }
-
         viewModelScope.launch {
             loginState = "loading"
             errorMessage = ""
             try {
+                val api = repo.getApi()
                 val response = withContext(Dispatchers.IO) { api.login(LoginRequest(user, pass)) }
-
                 if (response.isSuccessful) {
-                    val token = response.body() ?: ""
-                    session.saveSession(user, token)
+                    session.saveSession(user, response.body() ?: "")
                     loginState = "success"
+                    repo.retryPendingMessages() // Пробуем отправить после логина
                 } else {
-                    if (response.code() == 401) {
-                        errorMessage = "Неверный логин или пароль"
-                    } else {
-                        errorMessage = "Ошибка сервера: ${response.code()}"
-                    }
+                    errorMessage = "Ошибка: ${response.code()}"
                     loginState = "error"
                 }
             } catch (e: Exception) {
-                errorMessage = "Проверьте соединение с интернетом"
+                errorMessage = "Нет интернета"
                 loginState = "error"
             }
         }
@@ -56,9 +65,14 @@ class ChatViewModel(private val api: ChatApi, private val session: SessionManage
     fun loadChannels() {
         viewModelScope.launch {
             isChannelsLoading = true
-            try { channels = withContext(Dispatchers.IO) { api.getChannels() } }
-            catch (e: Exception) { errorMessage = "Ошибка каналов" }
-            finally { isChannelsLoading = false }
+            errorMessage = ""
+            try {
+                repo.refreshChannels()
+            } catch (e: Exception) {
+                errorMessage = "Оффлайн режим: данные из кэша"
+            } finally {
+                isChannelsLoading = false
+            }
         }
     }
 
@@ -66,28 +80,26 @@ class ChatViewModel(private val api: ChatApi, private val session: SessionManage
         selectedChannel = channelId
         viewModelScope.launch {
             isMessagesLoading = true
-            messages = emptyList()
+            errorMessage = ""
+            repo.retryPendingMessages()
             try {
-                // Загружаем последние 20
-                val res = withContext(Dispatchers.IO) {
-                    api.getMessages(channelId, limit = 20, lastKnownId = "999999999", reverse = true)
-                }
-                messages = res.reversed()
-            } catch (e: Exception) { errorMessage = "Ошибка сообщений" }
-            finally { isMessagesLoading = false }
+                repo.refreshMessages(channelId)
+            } catch (e: Exception) {
+                errorMessage = "Показана история из кэша"
+            } finally {
+                isMessagesLoading = false
+            }
         }
     }
 
-    fun loadMoreMessages() {
-        if (isMessagesLoading || messages.isEmpty()) return
+    fun loadMoreMessages(oldestId: String?) {
+        if (isMessagesLoading || oldestId == null || oldestId.startsWith("pending")) return
         viewModelScope.launch {
             isMessagesLoading = true
             try {
-                val oldestId = messages.first().id
-                val res = withContext(Dispatchers.IO) {
-                    api.getMessages(selectedChannel, limit = 20, lastKnownId = oldestId, reverse = true)
-                }
-                if (res.isNotEmpty()) messages = res.reversed() + messages
+                repo.refreshMessages(selectedChannel, lastKnownId = oldestId)
+            } catch (e: Exception) {
+                errorMessage = "Не удалось загрузить старые сообщения"
             } finally { isMessagesLoading = false }
         }
     }
@@ -95,13 +107,20 @@ class ChatViewModel(private val api: ChatApi, private val session: SessionManage
     fun sendMessage(text: String) {
         if (text.isBlank() || selectedChannel.isEmpty()) return
         viewModelScope.launch {
+            errorMessage = ""
             try {
-                val msg = Message(from = currentUser, to = selectedChannel, data = MessageData(Text = TextData(text)))
-                withContext(Dispatchers.IO) { api.sendMessage(msg) }
-                loadMessages(selectedChannel)
-            } catch (e: Exception) { errorMessage = "Ошибка отправки" }
+                repo.sendMessage(selectedChannel, currentUser, text)
+            } catch (e: Exception) {
+                errorMessage = "Ошибка сети: сообщение будет отправлено позже"
+            }
         }
     }
 
-    fun logout() { viewModelScope.launch { session.clear(); loginState = null; messages = emptyList() } }
+    fun logout() {
+        viewModelScope.launch {
+            session.clear()
+            loginState = null
+            selectedChannel = ""
+        }
+    }
 }
